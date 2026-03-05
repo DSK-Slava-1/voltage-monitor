@@ -78,6 +78,25 @@
             border-radius: 8px; font-size: 0.95em;
         }
 
+        /* Строка статистики */
+        .voltage-stats {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            font-size: 0.95em;
+            font-weight: 600;
+        }
+        .stat-item {
+            padding: 6px 14px;
+            border-radius: 8px;
+            color: #333;
+            background: transparent;
+        }
+        .stat-item.stat-normal   { background: rgba(100, 200, 100, 0.15); color: #2a7a2a; }
+        .stat-item.stat-warning  { background: rgba(255, 100, 100, 0.12); color: #a04040; }
+        .stat-item.stat-outage   { background: rgba(255, 100, 100, 0.28); color: #7a1c1c; }
+
         .export-btn {
             padding: 8px 20px; background: #888; color: white;
             border: none; border-radius: 8px; cursor: pointer;
@@ -103,6 +122,7 @@
             .header h1 { font-size: 1.8em; }
             .voltage-value { font-size: 2.5em; }
             .chart-controls { flex-direction: column; align-items: stretch; }
+            .voltage-stats { gap: 10px; }
         }
     </style>
 </head>
@@ -151,6 +171,13 @@
             <button class="period-btn active" onclick="applyCustomPeriod()">Применить</button>
         </div>
 
+        <!-- Строка статистики -->
+        <div class="voltage-stats" id="voltage-stats">
+            <span class="stat-item" id="stat-normal">В норме: —</span>
+            <span class="stat-item" id="stat-warning">Вне допуска: —</span>
+            <span class="stat-item" id="stat-outage">Отключение: —</span>
+        </div>
+
         <canvas id="voltageChart"></canvas>
 
         <div style="text-align: right; margin-top: 20px;">
@@ -185,6 +212,9 @@
     let voltageHistory = [];
     let currentPeriodKey = 'today';
     let chart = null;
+
+    // Интервал между измерениями в минутах
+    const MEASURE_INTERVAL_MIN = 5;
 
     function initChart() {
         const ctx = document.getElementById('voltageChart').getContext('2d');
@@ -319,16 +349,65 @@
         else                                   { el.classList.add('danger');  el.textContent = 'Опасно!'; }
     }
 
+    // Классификация одной записи по всем трём фазам
+    // «Норма» — все три в диапазоне 198–242 В
+    // «Вне допуска» — хотя бы одна фаза за пределами 198–242, но ни одна не отключена (<10 В)
+    // «Отключение» — хотя бы одна фаза < 10 В (считаем отсутствие напряжения)
+    function classifyRecord(r) {
+        const vals = [r.phaseA, r.phaseB, r.phaseC];
+        if (vals.some(v => v < 10))                           return 'outage';
+        if (vals.every(v => v >= 198 && v <= 242))            return 'normal';
+        return 'warning';
+    }
+
+    // Форматирование минут в ЧЧ:ММ
+    function fmtTime(minutes) {
+        const h = Math.floor(minutes / 60);
+        const m = Math.round(minutes % 60);
+        return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+    }
+
+    // Расчёт и отображение статистики по отфильтрованным записям
+    function updateStats(records) {
+        let cntNormal = 0, cntWarning = 0, cntOutage = 0;
+        records.forEach(r => {
+            const cls = classifyRecord(r);
+            if (cls === 'normal')   cntNormal++;
+            else if (cls === 'warning') cntWarning++;
+            else                    cntOutage++;
+        });
+
+        const toMin = n => n * MEASURE_INTERVAL_MIN;
+
+        const elNorm = document.getElementById('stat-normal');
+        const elWarn = document.getElementById('stat-warning');
+        const elOut  = document.getElementById('stat-outage');
+
+        const minNormal  = toMin(cntNormal);
+        const minWarning = toMin(cntWarning);
+        const minOutage  = toMin(cntOutage);
+
+        elNorm.textContent = 'В норме: ' + fmtTime(minNormal);
+        elWarn.textContent = 'Вне допуска: ' + fmtTime(minWarning);
+        elOut.textContent  = 'Отключение: ' + fmtTime(minOutage);
+
+        // Подкрашиваем только ненулевые значения
+        elNorm.className = 'stat-item' + (minNormal  > 0 ? ' stat-normal'  : '');
+        elWarn.className = 'stat-item' + (minWarning > 0 ? ' stat-warning' : '');
+        elOut.className  = 'stat-item' + (minOutage  > 0 ? ' stat-outage'  : '');
+    }
+
     // Единая функция фильтрации — никакого усреднения, каждая точка = реальное измерение
     function filterHistory(from, to, timeFmt) {
         const labels = [], dA = [], dB = [], dC = [];
+        const filtered = [];
 
         if (timeFmt === 'time') {
-            // Заполняем все 24 часа чтобы шкала всегда была 0-23
             const byHour = {};
             voltageHistory.forEach(r => {
                 const t = new Date(r.timestamp);
                 if (t >= from && t <= to) {
+                    filtered.push(r);
                     const h = t.getHours();
                     if (!byHour[h]) byHour[h] = [];
                     byHour[h].push({ phaseA: r.phaseA, phaseB: r.phaseB, phaseC: r.phaseC, min: t.getMinutes() });
@@ -337,7 +416,6 @@
             for (let h = 0; h <= 23; h++) {
                 const recs = byHour[h];
                 if (recs && recs.length > 0) {
-                    // Добавляем каждую точку внутри часа
                     recs.forEach(r => {
                         labels.push(h + r.min / 60);
                         dA.push(r.phaseA);
@@ -350,6 +428,7 @@
             voltageHistory.forEach(r => {
                 const t = new Date(r.timestamp);
                 if (t >= from && t <= to) {
+                    filtered.push(r);
                     labels.push(t.toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit'})
                         + ' ' + t.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'}));
                     dA.push(r.phaseA);
@@ -359,6 +438,7 @@
             });
         }
 
+        updateStats(filtered);
         setChartData(labels, dA, dB, dC);
     }
 
@@ -378,7 +458,6 @@
                     callback: function(val, idx) {
                         const label = this.getLabelForValue(val);
                         const day = label ? label.split(' ')[0] : '';
-                        // Показываем метку только для первой точки каждого дня
                         if (DAY_NAMES.includes(day)) {
                             const prev = idx > 0 ? this.getLabelForValue(idx - 1) : '';
                             const prevDay = prev ? prev.split(' ')[0] : '';
@@ -419,10 +498,11 @@
                 callback: v => Number.isInteger(v) && v < 7 ? DAY_NAMES[v] : ''
             };
 
-            const dA = [], dB = [], dC = [];
+            const dA = [], dB = [], dC = [], filtered = [];
             voltageHistory.forEach(r => {
                 const t = new Date(r.timestamp);
                 if (t >= monday && t <= now) {
+                    filtered.push(r);
                     const d = Math.floor((t - monday) / 86400000);
                     const x = d + (t.getHours() * 60 + t.getMinutes()) / 1440;
                     dA.push({x, y: r.phaseA});
@@ -430,6 +510,7 @@
                     dC.push({x, y: r.phaseC});
                 }
             });
+            updateStats(filtered);
             chart.data.labels = [];
             chart.data.datasets[0].data = dA;
             chart.data.datasets[1].data = dB;
@@ -449,16 +530,18 @@
                 callback: v => Number.isInteger(v) && v <= daysInMonth ? v : ''
             };
 
-            const dA = [], dB = [], dC = [];
+            const dA = [], dB = [], dC = [], filtered = [];
             voltageHistory.forEach(r => {
                 const t = new Date(r.timestamp);
                 if (t >= monthStart && t <= now) {
+                    filtered.push(r);
                     const x = t.getDate() + (t.getHours() * 60 + t.getMinutes()) / 1440;
                     dA.push({x, y: r.phaseA});
                     dB.push({x, y: r.phaseB});
                     dC.push({x, y: r.phaseC});
                 }
             });
+            updateStats(filtered);
             chart.data.labels = [];
             chart.data.datasets[0].data = dA;
             chart.data.datasets[1].data = dB;
@@ -522,22 +605,6 @@
         const ws = XLSX.utils.aoa_to_sheet(data);
         XLSX.utils.book_append_sheet(wb, ws, 'Напряжение');
         XLSX.writeFile(wb, 'voltage_data_' + new Date().toISOString().split('T')[0] + '.xlsx');
-    }
-
-    function updateCompliance(v) {
-        const phases = [{ name: 'A', val: v.phaseA }, { name: 'B', val: v.phaseB }, { name: 'C', val: v.phaseC }];
-        let html = '<ul style="list-style:none;padding:0;">';
-        phases.forEach(({ name, val }) => {
-            let icon, status;
-            if (val >= 207 && val <= 253)          { icon = '✅'; status = '<span style="color:#155724;font-weight:600;">✓ Соответствует норме</span>'; }
-            else if (val >= 195.5 && val <= 264.5) { icon = '⚠️'; status = '<span style="color:#856404;font-weight:600;">⚠ Предельное отклонение</span>'; }
-            else                                   { icon = '❌'; status = '<span style="color:#721c24;font-weight:600;">✗ Превышение нормы!</span>'; }
-            html += `<li style="padding:8px 0;border-bottom:1px solid #ddd;">${icon} <strong>Фаза ${name}:</strong> ${val.toFixed(1)} В — ${status}</li>`;
-        });
-        html += '</ul>';
-        const avg = (v.phaseA + v.phaseB + v.phaseC) / 3;
-        html += `<p style="margin-top:15px;font-weight:600;">Среднее напряжение: ${avg.toFixed(1)} В</p>`;
-        document.getElementById('compliance-info').innerHTML = html;
     }
 
     function showError(msg) { document.getElementById('error-container').innerHTML = `<div class="error">⚠️ ${msg}</div>`; }
