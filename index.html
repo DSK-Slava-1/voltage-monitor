@@ -213,9 +213,6 @@
     let currentPeriodKey = 'today';
     let chart = null;
 
-    // Интервал между измерениями в минутах
-    const MEASURE_INTERVAL_MIN = 5;
-
     function initChart() {
         const ctx = document.getElementById('voltageChart').getContext('2d');
 
@@ -369,23 +366,36 @@
 
     // Расчёт и отображение статистики по отфильтрованным записям
     function updateStats(records) {
-        let cntNormal = 0, cntWarning = 0, cntOutage = 0;
-        records.forEach(r => {
-            const cls = classifyRecord(r);
-            if (cls === 'normal')   cntNormal++;
-            else if (cls === 'warning') cntWarning++;
-            else                    cntOutage++;
-        });
+        let minNormal = 0, minWarning = 0, minOutage = 0;
 
-        const toMin = n => n * MEASURE_INTERVAL_MIN;
+        // Считаем время по реальным меткам: каждая запись «отвечает» за интервал
+        // от себя до следующей (или до конца периода для последней).
+        // Для первой записи берём интервал до второй (или 5 мин, если она одна).
+        const MAX_GAP_MIN = 10; // разрыв больше этого — не считаем (данные отсутствовали)
+
+        for (let i = 0; i < records.length; i++) {
+            const cur  = new Date(records[i].timestamp);
+            const next = records[i + 1] ? new Date(records[i + 1].timestamp) : null;
+            let gapMin;
+            if (next) {
+                gapMin = (next - cur) / 60000;
+                // Если разрыв слишком большой — данных не было, не учитываем
+                if (gapMin > MAX_GAP_MIN) gapMin = 0;
+            } else {
+                // Последняя запись: берём среднее между предыдущим интервалом и 5 мин
+                const prev = records[i - 1] ? new Date(records[i - 1].timestamp) : null;
+                gapMin = prev ? Math.min((cur - prev) / 60000, MAX_GAP_MIN) : 5;
+            }
+
+            const cls = classifyRecord(records[i]);
+            if (cls === 'normal')        minNormal  += gapMin;
+            else if (cls === 'warning')  minWarning += gapMin;
+            else                         minOutage  += gapMin;
+        }
 
         const elNorm = document.getElementById('stat-normal');
         const elWarn = document.getElementById('stat-warning');
         const elOut  = document.getElementById('stat-outage');
-
-        const minNormal  = toMin(cntNormal);
-        const minWarning = toMin(cntWarning);
-        const minOutage  = toMin(cntOutage);
 
         elNorm.textContent = 'В норме: ' + fmtTime(minNormal);
         elWarn.textContent = 'Вне допуска: ' + fmtTime(minWarning);
