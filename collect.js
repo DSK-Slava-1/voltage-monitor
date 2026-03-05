@@ -92,10 +92,7 @@ function saveData(voltageData) {
 
   history.push(voltageData);
 
-  // Храним последние 7 дней: 288 записей/день × 7 = 2016 (при интервале 5 мин)
-  const maxRecords = 2016;
-  if (history.length > maxRecords) history = history.slice(-maxRecords);
-
+  // Храним все данные без ограничений
   fs.writeFileSync('data/voltage-history.json', JSON.stringify(history, null, 2));
   console.log('Data saved. Total records:', history.length);
 }
