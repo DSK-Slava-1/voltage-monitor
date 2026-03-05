@@ -79,12 +79,12 @@
         }
 
         .export-btn {
-            padding: 10px 25px; background: #28a745; color: white;
+            padding: 8px 20px; background: #888; color: white;
             border: none; border-radius: 8px; cursor: pointer;
-            font-weight: 600; font-size: 1em; transition: all 0.3s ease;
+            font-weight: 600; font-size: 0.95em; transition: all 0.3s ease;
             display: inline-flex; align-items: center; gap: 8px;
         }
-        .export-btn:hover { background: #218838; transform: translateY(-2px); box-shadow: 0 5px 15px rgba(40,167,69,0.3); }
+        .export-btn:hover { background: #666; }
 
         .info-section { background: white; border-radius: 16px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
         .info-title { font-size: 1.5em; font-weight: 600; color: #333; margin-bottom: 20px; }
@@ -153,48 +153,29 @@
 
         <canvas id="voltageChart"></canvas>
 
-        <div style="text-align: center; margin-top: 20px;">
-            <button class="export-btn" onclick="exportToExcel()">📊 Выгрузить в Excel</button>
+        <div style="text-align: right; margin-top: 20px;">
+            <button class="export-btn" onclick="exportToExcel()">📊 Выгрузить</button>
         </div>
     </div>
 
     <div class="info-section">
-        <h3 class="info-title">📋 Нормы электроснабжения в России</h3>
+        <h3 class="info-title">Нормы электроснабжения</h3>
         <div class="info-grid">
             <div class="info-item">
                 <h4>Номинальное напряжение</h4>
-                <p><strong>220 В (230 В по ГОСТ 29322-2014)</strong><br>
-                Стандартное напряжение однофазной сети в России составляет 220 В, однако согласно ГОСТ 29322-2014 номинальное значение установлено как 230 В для гармонизации с европейскими стандартами.</p>
+                <p><strong>220 В</strong><br>
+                Согласно ГОСТ 32144-2013 стандартное напряжение сети составляет 220 В.</p>
             </div>
             <div class="info-item">
                 <h4>Допустимые отклонения</h4>
-                <p><strong>±10% (207–253 В)</strong><br>
-                Согласно ГОСТ 29322-2014, нормально допустимые отклонения напряжения составляют ±10% от номинального значения 230 В, то есть от 207 до 253 В.</p>
-            </div>
-            <div class="info-item">
-                <h4>Предельные отклонения</h4>
-                <p><strong>±15% (195.5–264.5 В)</strong><br>
-                Предельно допустимые отклонения составляют ±15% от номинального значения. Выход за эти пределы является грубым нарушением качества электроснабжения.</p>
+                <p><strong>±10% (198–242 В)</strong><br>
+                Согласно ГОСТ 32144-2013 отклонения напряжения не должны превышать ±10% номинального значения 220 В - от 198 до 242 В.</p>
             </div>
             <div class="info-item">
                 <h4>Допустимое время отключения</h4>
                 <p><strong>До 72 часов в год</strong><br>
-                Согласно Постановлению Правительства РФ №354, суммарная продолжительность перерывов электроснабжения не должна превышать 72 часа в год (для населения).</p>
+                Согласно Постановлению Правительства РФ №354, суммарная продолжительность перерывов электроснабжения не должна превышать 72 часа в год.</p>
             </div>
-            <div class="info-item">
-                <h4>Частота сети</h4>
-                <p><strong>50 Гц ±0.2 Гц</strong><br>
-                Номинальная частота электрической сети в России составляет 50 Гц с допустимым отклонением ±0.2 Гц в нормальном режиме работы.</p>
-            </div>
-            <div class="info-item">
-                <h4>Категории надежности</h4>
-                <p><strong>I, II, III категории</strong><br>
-                I категория — перерыв только на время автоматического переключения (сек). II категория — до 2 часов. III категория — до 24 часов.</p>
-            </div>
-        </div>
-        <div class="compliance">
-            <h4>🔍 Оценка соответствия нормам</h4>
-            <div id="compliance-info"><p>Ожидание данных для анализа соответствия...</p></div>
         </div>
     </div>
 
@@ -307,7 +288,6 @@
             const latest = await latestRes.json();
 
             updateDisplay(latest);
-            updateCompliance(latest);
             document.getElementById('last-update').textContent =
                 'Автоматическое обновление каждые 5 минут. Последнее обновление: ' + new Date(latest.timestamp).toLocaleString('ru-RU');
 
